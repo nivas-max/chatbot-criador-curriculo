@@ -1,18 +1,16 @@
 import io
 import re
 import unicodedata
-from datetime import date
 from pathlib import Path
 from xml.sax.saxutils import escape
 
 import streamlit as st
 from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, KeepTogether
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
 
 st.set_page_config(page_title="Criador de Currículo", page_icon="📄", layout="centered")
 st.title("📄 Meu Currículo Profissional")
@@ -125,10 +123,11 @@ def formulario_experiencia():
             return
         if resposta is None:
             return
+    # O radio fica fora do formulário para mostrar imediatamente os campos condicionais.
+    atual = st.radio("É o seu trabalho atual?", ["Sim", "Não"], index=None, horizontal=True, key="exp_atual")
     with st.form("form_experiencia", clear_on_submit=True):
         empresa = st.text_input("Em qual empresa?")
         inicio = st.text_input("Em que ano começou a trabalhar nesta empresa?", placeholder="Ex.: 2022")
-        atual = st.radio("É o seu trabalho atual?", ["Sim", "Não"], horizontal=True)
         fim_mes, fim_ano = "", ""
         if atual == "Não":
             fim_mes = st.selectbox("Até que mês você trabalhou lá?", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"])
@@ -141,7 +140,9 @@ def formulario_experiencia():
         adicionar = c1.form_submit_button("Salvar e adicionar outra")
         concluir = c2.form_submit_button("Salvar e continuar")
     if adicionar or concluir:
-        if texto_obrigatorio(empresa, area, funcao) and validar_ano(inicio) and (atual == "Sim" or validar_ano(fim_ano)):
+        if atual is None:
+            st.warning("Informe se este é seu trabalho atual.")
+        elif texto_obrigatorio(empresa, area, funcao) and validar_ano(inicio) and (atual == "Sim" or validar_ano(fim_ano)):
             if atual == "Não" and int(fim_ano) < int(inicio):
                 st.warning("O ano de término não pode ser anterior ao início.")
             else:
@@ -151,6 +152,7 @@ def formulario_experiencia():
                 if concluir:
                     avancar()
                 else:
+                    st.session_state.pop("exp_atual", None)
                     st.rerun()
     if lista and st.button("Continuar sem adicionar outra experiência"):
         avancar()
@@ -168,9 +170,9 @@ def formulario_voluntariado():
             return
         if resposta is None:
             return
+    atual = st.radio("Você ainda faz este trabalho?", ["Sim", "Não"], index=None, horizontal=True, key="vol_atual")
     with st.form("form_voluntariado", clear_on_submit=True):
         descricao = st.text_area("Conte em poucas palavras qual o tipo de trabalho.")
-        atual = st.radio("Você ainda faz este trabalho?", ["Sim", "Não"], horizontal=True)
         fim_mes, fim_ano = "", ""
         if atual == "Não":
             fim_mes = st.selectbox("Até que mês você atuou?", ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"])
@@ -179,7 +181,9 @@ def formulario_voluntariado():
         adicionar = c1.form_submit_button("Salvar e adicionar outro")
         concluir = c2.form_submit_button("Salvar e continuar")
     if adicionar or concluir:
-        if texto_obrigatorio(descricao) and (atual == "Sim" or validar_ano(fim_ano)):
+        if atual is None:
+            st.warning("Informe se ainda realiza este trabalho voluntário.")
+        elif texto_obrigatorio(descricao) and (atual == "Sim" or validar_ano(fim_ano)):
             lista.append({"descricao": descricao.strip(), "atual": atual == "Sim", "fim_mes": fim_mes, "fim_ano": fim_ano})
             if concluir:
                 avancar()
@@ -280,7 +284,7 @@ if etapa > 0 and etapa < 11:
         anterior()
 
 if etapa == 0:
-    st.info("Olá! Estou aqui para te ajudar a criar seu currículo e permitir que você baixe em PDF. As perguntas vão gerar informações que vão te ajudar.")
+    st.info("Olá, estou aqui para te ajudar a criar seu currículo e permitir que você baixe em PDF. As perguntas vão gerar informações que vão te ajudar.")
     st.subheader("Etapa 1 — Informações")
     with st.form("informacoes"):
         nome = st.text_input("Qual é o seu nome completo?", value=dados["nome"])
@@ -307,8 +311,9 @@ elif etapa == 1:
 
 elif etapa == 2:
     st.subheader("Etapa 3 — Ensino Fundamental")
+    concluiu = st.radio("Você já concluiu o Ensino Fundamental?", ["Sim", "Não"],
+                        index=None, key="fund_concluiu")
     with st.form("fundamental"):
-        concluiu = st.radio("Você já concluiu o Ensino Fundamental?", ["Sim", "Não"], index=0 if dados["fundamental"] else None)
         escola = st.text_input("Em qual escola?", value=(dados["fundamental"] or {}).get("escola", "")) if concluiu == "Sim" else ""
         ano = st.text_input("Em que ano terminou?", placeholder="Ex.: 2020", value=(dados["fundamental"] or {}).get("ano", "")) if concluiu == "Sim" else ""
         ok = st.form_submit_button("Continuar")
@@ -325,8 +330,8 @@ elif etapa == 2:
 elif etapa == 3:
     st.subheader("Etapa 4 — Ensino Médio")
     anterior_m = dados["medio"] or {}
+    concluiu = st.radio("Você já concluiu o Ensino Médio?", ["Sim", "Não"], index=None, key="medio_concluiu")
     with st.form("medio"):
-        concluiu = st.radio("Você já concluiu o Ensino Médio?", ["Sim", "Não"], index=None)
         escola, serie, ano = "", "", ""
         if concluiu == "Sim":
             escola = st.text_input("Em qual escola?", value=anterior_m.get("escola", ""))
@@ -407,4 +412,4 @@ elif etapa == 11:
             st.session_state.pop(chave, None)
         st.rerun()
 
-st.caption("Seus dados são utilizados para montar o currículo nesta sessão; este aplicativo não os envia por e-mail nem os grava em banco de dados.")
+st.caption("Os dados são usados para gerar o currículo durante a sessão. Este aplicativo não envia e-mails nem possui banco de dados. Compartilhe apenas informações que deseja incluir no currículo.")
